@@ -27,8 +27,9 @@
 #include "ADC.h"
 #include "LCD.h"
 #include "Map_adc.h"
+#include "UART.h"
 
-#define _XTAL_FREQ 4000000
+#define _XTAL_FREQ 10000000
 #define RS RD2
 #define EN RD3
 #define D4 RD4
@@ -37,6 +38,7 @@
 #define D7 RD7
 
 char volt [4];
+char hiper;
 int V;
 int V_out;
 // Prototipos
@@ -47,12 +49,30 @@ void __interrupt() isr(void)
     {
         adc_change_channel(1);
         PORTA = adc_get_channel();
-        //PORTD = adc_read();              // Asiganr el valor del ADC a la variable
         V = adc_read();
-       
         V_out =  map (V, 500, 1000,100,200);
         ADIF =0;                            // Apagar la bandera de interrupcion
         return;
+    }
+    
+    if (RCIF)
+    {
+        char opcion = RCREG;
+        switch (opcion)
+        {
+            case '1': // En caso que presionemos 1, nos mande a leer el valor del potenciometro
+                UART_write_char(volt);
+                break; 
+            case '+': // En caso que ingresemos +, incrementa el contador del puerto B
+                PORTB++;
+                break;
+            case '-': // En caso que ingresemos -, incrementa el contador del puerto B
+                PORTB--;
+                break;
+            default:
+                UART_write_char("Opcion no definida\r");
+                while(RCREG != 13); // Esperar hasta que se presione Enter
+        }
     }
 
 }
@@ -62,7 +82,7 @@ void main(void)
     setup();
     unsigned int a;
     Lcd_Init();
-    
+    char texto[] = "1. Leer potenciometro\r+. Incrementar puerto B\r-. Decrementar puerto B\r"; // Cadena de caracteres a enviar
     while (1)
     {
         if(ADCON0bits.GO == 0)
@@ -70,6 +90,9 @@ void main(void)
            __delay_ms(10);
             ADCON0bits.GO = 1;  
         }
+        
+        UART_write_char(texto); // Llamada a la cadena
+        __delay_ms(500); // Tiempos de espera de 5seg
         
         Lcd_Clear();
         Lcd_Set_Cursor(1,1);
@@ -79,23 +102,8 @@ void main(void)
         Lcd_Write_String(volt);
         __delay_ms(2000);
     
-
-        /*for(a=0;a<15;a++)
-        {
-            __delay_ms(300);
-            Lcd_Shift_Left();
-        }
-
-        for(a=0;a<15;a++)
-        {
-            __delay_ms(300);
-            Lcd_Shift_Right();
-        }*/
-    
         return;
     }
-    
-   
     
   }
     
@@ -104,11 +112,13 @@ void main(void)
 void setup(void)
 {
     TRISA = 0b00000011;
+    TRISB = 0;
     TRISD = 0;
-    TRISC = 0;
+    TRISC = 0xFF;
     TRISE = 0;
     
     PORTA = 0;
+    PORTB = 0;
     PORTC = 0;
     PORTD = 0;
     PORTE = 0;
@@ -127,6 +137,8 @@ void setup(void)
     INTCONbits.RBIF = 0;
     
     adc_init(1);
+    UART_RX_config(9600); 
+    UART_TX_config(9600);
     
     return;
 }
